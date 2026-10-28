@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Harsh Sinha: resume chat</title>
+<meta name="description" content="An AI version of Harsh Sinha that answers only from his resume.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EAF0EC; --surface:#FFFFFF; --ink:#12261E; --muted:#5B6F65; --line:#CBD8D0;
+  --accent:#0F6B4F; --on-accent:#FFFFFF; --user:#12261E; --on-user:#EAF0EC;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0E1713; --surface:#16231C; --ink:#E4EEE8; --muted:#93A89C; --line:#27382F;
+         --accent:#5FD3A4; --on-accent:#0E1713; --user:#5FD3A4; --on-user:#0E1713; }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:16px/1.55 Figtree,system-ui,sans-serif;
+  display:flex; flex-direction:column; max-width:720px; margin:0 auto;
+  padding:env(safe-area-inset-top,0) 16px env(safe-area-inset-bottom,0);
+}
+header{padding:28px 0 12px}
+h1{font:700 clamp(30px,6vw,40px)/1.1 "Bricolage Grotesque",Figtree,sans-serif;margin:0 0 6px;letter-spacing:-.02em}
+header p{margin:0;color:var(--muted)}
+header a{color:var(--accent);font-weight:600}
+main{flex:1;overflow-y:auto;padding:12px 0;display:flex;flex-direction:column;gap:12px}
+.intro h2{font:500 20px/1.3 "Bricolage Grotesque",Figtree,sans-serif;margin:16px 0 4px}
+.intro p{margin:0 0 14px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+button.chip{
+  font:inherit;font-weight:500;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:999px;padding:9px 14px;cursor:pointer;
+}
+button.chip:hover{border-color:var(--accent)}
+.msg{max-width:88%;padding:10px 14px;border-radius:16px;overflow-wrap:anywhere}
+.msg.user{align-self:flex-end;background:var(--user);color:var(--on-user);border-bottom-right-radius:4px}
+.msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg ul{margin:6px 0;padding-left:20px}
+.msg a{color:var(--accent)}
+.dots::after{content:"…";animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.2}}
+form{display:flex;gap:8px;padding:10px 0 16px}
+input{
+  flex:1;min-width:0;font:inherit;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:12px;padding:12px 14px;
+}
+input::placeholder{color:var(--muted)}
+form button{
+  font:inherit;font-weight:600;background:var(--accent);color:var(--on-accent);
+  border:0;border-radius:12px;padding:0 18px;cursor:pointer;
+}
+form button:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.dots::after{animation:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Harsh Sinha</h1>
+  <p>AI version that answers only from my resume. <a href="/resume.pdf" download>Download my resume</a></p>
+</header>
+
+<main id="log" aria-live="polite">
+  <section class="intro" id="intro">
+    <h2>What would you like to know?</h2>
+    <p>Pick a question or type your own.</p>
+    <div class="chips" id="chips"></div>
+  </section>
+</main>
+
+<form id="form" autocomplete="off">
+  <input id="q" type="text" maxlength="500" placeholder="Ask about my experience, projects or skills" aria-label="Your question">
+  <button id="send" type="submit">Ask</button>
+</form>
+
+<script>
+const STARTERS = [
+  "What did Harsh do at Tata Advanced Systems?",
+  "Tell me about MindBridge AI",
+  "What are his technical skills?",
+  "What does he do as President of Binary Club?",
+  "Which AI tools does he use?"
+];
+
+const log = document.getElementById("log");
+const form = document.getElementById("form");
+const input = document.getElementById("q");
+const sendBtn = document.getElementById("send");
+const history = [];
+let busy = false;
+
+STARTERS.forEach(s => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.textContent = s;
+  b.onclick = () => ask(s);
+  document.getElementById("chips").append(b);
+});
+
+form.addEventListener("submit", e => {
+  e.preventDefault();
+  const t = input.value.trim();
+  if (t) { input.value = ""; ask(t); }
+});
+
+function esc(s){ return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// Tiny safe markdown: **bold**, "- " bullets, line breaks, bare links/emails
+function render(text){
+  const lines = esc(text).split("\n");
+  let html = "", inList = false;
+  for (const raw of lines){
+    const line = raw
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
+      .replace(/([\w.+-]+@[\w-]+\.[\w.-]+)/g, '<a href="mailto:$1">$1</a>');
+    const m = line.match(/^\s*[-*•]\s+(.*)/);
+    if (m){ if(!inList){html+="<ul>";inList=true;} html += "<li>"+m[1]+"</li>"; }
+    else { if(inList){html+="</ul>";inList=false;} html += line.trim() ? "<p style='margin:0 0 6px'>"+line+"</p>" : ""; }
+  }
+  return html + (inList ? "</ul>" : "");
+}
+
+function addMsg(role, text){
+  const d = document.createElement("div");
+  d.className = "msg " + role;
+  if (text) d.textContent = text;
+  log.append(d);
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+async function ask(text){
+  if (busy) return;
+  busy = true; sendBtn.disabled = true;
+  document.getElementById("intro")?.remove();
+
+  history.push({ role: "user", content: text });
+  addMsg("user", text);
+  const bubble = addMsg("ai", "");
+  bubble.classList.add("dots");
+
+  try {
+    const r = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: history })
+    });
+    if (!r.ok) {
+      bubble.classList.remove("dots");
+      bubble.textContent = r.status === 429
+        ? "That's a lot of questions in a short time. Please try again in a few minutes."
+        : "Something went wrong. Please try again.";
+      history.pop();
+      return;
+    }
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let acc = "";
+    while (true){
+      const { done, value } = await reader.read();
+      if (done) break;
+      acc += dec.decode(value, { stream: true });
+      bubble.classList.remove("dots");
+      bubble.innerHTML = render(acc);
+      log.scrollTop = log.scrollHeight;
+    }
+    history.push({ role: "assistant", content: acc });
+  } catch {
+    bubble.classList.remove("dots");
+    bubble.textContent = "Couldn't reach the server. Check your connection and try again.";
+    history.pop();
+  } finally {
+    busy = false; sendBtn.disabled = false; input.focus();
+  }
+}
+</script>
+</body>
+</html>
